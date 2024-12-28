@@ -1,0 +1,12 @@
+﻿{
+  "Id": "PickAndMix",
+  "DisplayName": "Pick and Mix",
+  "Author": "",
+  "Version": "1.0.0",
+  "ManagerVersion": "0.27.11",
+  "Requirements": [],
+  "AssemblyName": "PickAndMix.dll",
+  "EntryMethod": "PickAndMix.Main.Load",
+  "HomePage": "",
+  "Repository": ""
+}
