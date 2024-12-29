@@ -1,12 +1,12 @@
 ﻿{
   "Id": "PickAndMix",
   "DisplayName": "Pick and Mix",
-  "Author": "",
-  "Version": "1.0.0",
+  "Author": "Seamato",
+  "Version": "1.0.1",
   "ManagerVersion": "0.27.11",
   "Requirements": [],
   "AssemblyName": "PickAndMix.dll",
   "EntryMethod": "PickAndMix.Main.Load",
-  "HomePage": "",
-  "Repository": ""
+  "HomePage": "https://github.com/cstamford/WOTR_PickAndMix",
+  "Repository": "https://github.com/cstamford/WOTR_PickAndMix"
 }
