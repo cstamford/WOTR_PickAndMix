@@ -12,10 +12,21 @@ using Kingmaker.RandomEncounters;
 using System.Linq;
 using Kingmaker.UnitLogic;
 using Kingmaker.Blueprints.Classes;
+using Kingmaker;
+using Kingmaker.GameModes;
+using Kingmaker.Visual.Critters;
+using System;
 
 [HarmonyPatch(typeof(OwlcatRenderPipeline), nameof(OwlcatRenderPipeline.InitializeShadowData), [typeof(ShadowingData)], [ArgumentType.Out])]
 public static class FixShadowResolution {
     public static void Postfix(ref ShadowingData shadowData) {
+        if (Game.Instance.CurrentMode == GameModeType.GlobalMap ||
+            Game.Instance.CurrentMode == GameModeType.Kingdom)
+        {
+            // Don't apply shadow tweaks unless we're in regular play.  Point light resolution causes visual aliasing (shadow bias seems off).
+            return;
+        }
+
         shadowData.AtlasSize = Main.AtlasSize;
         shadowData.DirectionalLightCascades.Count = Main.DirectionalLightCascadeCount;
         shadowData.DirectionalLightCascadeResolution = Main.DirectionalLightCascadeResolution;
@@ -55,4 +66,42 @@ public static class AvoidAmbushFromRandomEncounters {
     public static void Postfix(ref RandomEncounterAvoidanceCheckResult __result) {
         __result = Main.AvoidAmbushFromRandomEncounters ? RandomEncounterAvoidanceCheckResult.Success : __result;
     }
+}
+
+[HarmonyPatch(typeof(Familiar), nameof(Familiar.Update))]
+public static class HideFamiliars {
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator) {
+        try {
+            return TranspilerImpl(instructions, generator);
+        } catch (TypeLoadException e) {
+            Main.HideFamiliarsException = e;
+            Main.ModEntry.Logger.Error($"{ErrorText.HideFamiliarsDisabledDueToError}");
+            Main.ModEntry.Logger.LogException(e);
+            return instructions;
+        }
+    }
+
+    private static IEnumerable<CodeInstruction> TranspilerImpl(IEnumerable<CodeInstruction> instructions, ILGenerator generator) => new CodeMatcher(instructions, generator)
+        .MatchStartForward(
+            CodeMatch.LoadsArgument(),
+            CodeMatch.Calls(AccessTools.PropertyGetter(typeof(Familiar), nameof(Familiar.State))),
+            CodeMatch.LoadsConstant(1),
+            CodeMatch.Branches(),
+            CodeMatch.LoadsArgument(),
+            CodeMatch.LoadsField(AccessTools.Field(typeof(Familiar), nameof(Familiar.m_MoveAgent)))
+        )
+        .ThrowIfInvalid("HideFamiliars - find label")
+        .CreateLabel(out Label setHiddenAndReturnLabel)
+        .Start()
+        .MatchStartForward(
+            CodeMatch.LoadsArgument(),
+            CodeMatch.Calls(AccessTools.PropertyGetter(typeof(Familiar), nameof(Familiar.HideInCapital))),
+            CodeMatch.Branches()
+        )
+        .ThrowIfInvalid("HideFamiliars - jump to label")
+        .Insert(
+            new CodeInstruction(OpCodes.Call, AccessTools.PropertyGetter(typeof(Main), nameof(Main.HideFamiliars))),
+            new CodeInstruction(OpCodes.Brtrue, setHiddenAndReturnLabel)
+        )
+        .Instructions();
 }

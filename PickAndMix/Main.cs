@@ -7,6 +7,7 @@ using UnityEngine;
 using UniRx;
 using static UnityEngine.GUILayout;
 using static PickAndMix.GUILayoutExtensions;
+using System;
 
 namespace PickAndMix;
 
@@ -22,6 +23,7 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
     public bool DisableLockJamming;
     public bool MainCharacterHasAdvantageOnRolls;
     public bool AvoidAmbushFromRandomEncounters;
+    public bool HideFamiliars;
 
     public PickAndMixSettings() => ApplyOptimizedDefaults();
 
@@ -38,6 +40,7 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         DisableLockJamming = false;
         MainCharacterHasAdvantageOnRolls = false;
         AvoidAmbushFromRandomEncounters = false;
+        HideFamiliars = false;
     }
 
     public void ApplyOptimizedDefaults() {
@@ -49,7 +52,15 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         DisableLockJamming = true;
         MainCharacterHasAdvantageOnRolls = true;
         AvoidAmbushFromRandomEncounters = true;
+        HideFamiliars = true;
     }
+}
+
+public static class ErrorText {
+    public static string HideFamiliarsDisabledDueToError =
+        $"Exception when trying to apply HideFamiliars. The hidden familiar functionality will not work. " +
+        $"This was likely caused by an old version of Harmony. Make sure your version of Wrath_Data/Managed/0Harmony.dll is 2.3.1.1 or later. " +
+        $"If your version of Harmony is old, you may be able to fix it by replacing it with the one from Wrath_Data/Managed/UnityModManager/0Harmony.dll";
 }
 
 #if DEBUG
@@ -64,6 +75,8 @@ public static class Main {
     public static bool DisableLockJamming => _settings.DisableLockJamming;
     public static bool MainCharacterHasAdvantageOnRolls => _settings.MainCharacterHasAdvantageOnRolls;
     public static bool AvoidAmbushFromRandomEncounters => _settings.AvoidAmbushFromRandomEncounters;
+    public static bool HideFamiliars => _settings.HideFamiliars;
+    public static Exception HideFamiliarsException { get; set; } = null;
 
     public static Harmony HarmonyInstance;
     public static UnityModManager.ModEntry ModEntry;
@@ -87,14 +100,14 @@ public static class Main {
 
     private static readonly List<int> _AtlasSizes = [1024, 2048, 4096, 8192, 16384];
     private static readonly List<int> _DirectionalLightCascadeCount = [1, 2, 3, 4];
-    private static readonly List<int> _DirectionalLightCascadeResolutions = [128, 256, 512, 1024, 2048, 4096];
+    private static readonly List<int> _DirectionalLightCascadeResolutions = [256, 512, 1024, 2048, 4096];
     private static readonly List<int> _PointLightResolutions = [128, 256, 512, 1024, 2048];
     private static readonly List<int> _SpotLightResolutions = [128, 256, 512, 1024, 2048];
 
     public static void OnGUI(UnityModManager.ModEntry modEntry) {
-        GUILayoutOption labelWidth = Width(100);
-        GUILayoutOption shadowControlWidth = Width(167);
-        GUILayoutOption tweaksControlWidth = Width(167*2);
+        GUILayoutOption labelWidth = Width(128);
+        GUILayoutOption shadowControlWidth = Width(192);
+        GUILayoutOption tweaksControlWidth = Width(384);
 
         int spacing = 10;
 
@@ -115,14 +128,12 @@ public static class Main {
         using (HorizontalScope _ = new()) {
             OnGUI_ShadowAtlasSize(labelWidth, shadowControlWidth);
             Space(spacing);
-            OnGUI_DirectionalLightCascadeCount(labelWidth, shadowControlWidth);
+            OnGUI_DirectionalLightCascadeResolution(labelWidth, shadowControlWidth);
         }
 
         Space(spacing);
 
         using (HorizontalScope _ = new()) {
-            OnGUI_DirectionalLightCascadeResolution(labelWidth, shadowControlWidth);
-            Space(spacing);
             OnGUI_PointLightResolution(labelWidth, shadowControlWidth);
             Space(spacing);
             OnGUI_SpotLightResolution(labelWidth, shadowControlWidth);
@@ -144,6 +155,12 @@ public static class Main {
 
         using (HorizontalScope _ = new()) {
             OnGUI_AvoidAmbushFromRandomEncounters(labelWidth, tweaksControlWidth);
+        }
+
+        Space(spacing);
+
+        using (HorizontalScope _ = new()) {
+            OnGUI_HideFamiliars(labelWidth, tweaksControlWidth);
         }
 
         Spacer(Color.black, spacing/2, spacing);
@@ -203,6 +220,21 @@ public static class Main {
         int currentAvoidAmbushFromRandomEncountersIdx = _settings.AvoidAmbushFromRandomEncounters ? 0 : 1;
         int avoidAmbushFromRandomEncountersIdx = SelectionGrid(currentAvoidAmbushFromRandomEncountersIdx, ["Ambushes are avoided", "Ambushes are not avoided"], 1, controlWidth);
         _settings.AvoidAmbushFromRandomEncounters = avoidAmbushFromRandomEncountersIdx == 0;
+    }
+
+    public static void OnGUI_HideFamiliars(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
+        GUI.enabled = HideFamiliarsException == null;
+
+        Label("Hide Familiars", labelWidth);
+        int currentHideFamiliarsIdx = _settings.HideFamiliars ? 0 : 1;
+        int hideFamiliarsIdx = SelectionGrid(currentHideFamiliarsIdx, ["Familiars are hidden", "Familiars are not hidden"], 1, controlWidth);
+        _settings.HideFamiliars = hideFamiliarsIdx == 0;
+
+        if (HideFamiliarsException != null) {
+            Label($"{ErrorText.HideFamiliarsDisabledDueToError}\n{HideFamiliarsException}");
+        }
+
+        GUI.enabled = true;
     }
 
     private static void OnSaveGUI(UnityModManager.ModEntry modEntry) {
