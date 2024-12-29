@@ -20,6 +20,8 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
 
     // Tweaks
     public bool DisableLockJamming;
+    public bool MainCharacterHasAdvantageOnRolls;
+    public bool AvoidAmbushFromRandomEncounters;
 
     public PickAndMixSettings() => ApplyOptimizedDefaults();
 
@@ -34,6 +36,8 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         PointLightResolution = 512;
         SpotLightResolution = 512;
         DisableLockJamming = false;
+        MainCharacterHasAdvantageOnRolls = false;
+        AvoidAmbushFromRandomEncounters = false;
     }
 
     public void ApplyOptimizedDefaults() {
@@ -43,6 +47,8 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         PointLightResolution = 2048;
         SpotLightResolution = 2048;
         DisableLockJamming = true;
+        MainCharacterHasAdvantageOnRolls = true;
+        AvoidAmbushFromRandomEncounters = true;
     }
 }
 
@@ -56,6 +62,8 @@ public static class Main {
     public static int PointLightResolution => _settings.PointLightResolution;
     public static int SpotLightResolution => _settings.SpotLightResolution;
     public static bool DisableLockJamming => _settings.DisableLockJamming;
+    public static bool MainCharacterHasAdvantageOnRolls => _settings.MainCharacterHasAdvantageOnRolls;
+    public static bool AvoidAmbushFromRandomEncounters => _settings.AvoidAmbushFromRandomEncounters;
 
     public static Harmony HarmonyInstance;
     public static UnityModManager.ModEntry ModEntry;
@@ -85,7 +93,9 @@ public static class Main {
 
     public static void OnGUI(UnityModManager.ModEntry modEntry) {
         GUILayoutOption labelWidth = Width(100);
-        GUILayoutOption controlWidth = Width(167);
+        GUILayoutOption shadowControlWidth = Width(167);
+        GUILayoutOption tweaksControlWidth = Width(167*2);
+
         int spacing = 10;
 
         using (HorizontalScope _ = new()) {
@@ -103,25 +113,37 @@ public static class Main {
         Spacer(Color.black, spacing/2, spacing);
 
         using (HorizontalScope _ = new()) {
-            OnGUI_ShadowAtlasSize(labelWidth, controlWidth);
+            OnGUI_ShadowAtlasSize(labelWidth, shadowControlWidth);
             Space(spacing);
-            OnGUI_DirectionalLightCascadeCount(labelWidth, controlWidth);
+            OnGUI_DirectionalLightCascadeCount(labelWidth, shadowControlWidth);
         }
 
         Space(spacing);
 
         using (HorizontalScope _ = new()) {
-            OnGUI_DirectionalLightCascadeResolution(labelWidth, controlWidth);
+            OnGUI_DirectionalLightCascadeResolution(labelWidth, shadowControlWidth);
             Space(spacing);
-            OnGUI_PointLightResolution(labelWidth, controlWidth);
+            OnGUI_PointLightResolution(labelWidth, shadowControlWidth);
             Space(spacing);
-            OnGUI_SpotLightResolution(labelWidth, controlWidth);
+            OnGUI_SpotLightResolution(labelWidth, shadowControlWidth);
         }
 
         Spacer(Color.black, spacing/2, spacing);
 
         using (HorizontalScope _ = new()) {
-            OnGUI_DisableLockJamming(labelWidth);
+            OnGUI_DisableLockJamming(labelWidth, tweaksControlWidth);
+        }
+
+        Space(spacing);
+
+        using (HorizontalScope _ = new()) {
+            OnGUI_MainCharacterHasAdvantageOnRolls(labelWidth, tweaksControlWidth);
+        }
+
+        Space(spacing);
+
+        using (HorizontalScope _ = new()) {
+            OnGUI_AvoidAmbushFromRandomEncounters(labelWidth, tweaksControlWidth);
         }
 
         Spacer(Color.black, spacing/2, spacing);
@@ -162,11 +184,25 @@ public static class Main {
         _settings.SpotLightResolution = _SpotLightResolutions[spotLightResolutionIdx];
     }
 
-    public static void OnGUI_DisableLockJamming(GUILayoutOption labelWidth) {
+    public static void OnGUI_DisableLockJamming(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
         Label("Lock Jamming", labelWidth);
         int currentDisableLockJammingIdx = _settings.DisableLockJamming ? 0 : 1;
-        int disableLockJammingIdx = SelectionGrid(currentDisableLockJammingIdx, ["Locks will never jam", "Locks may jam"], 2);
+        int disableLockJammingIdx = SelectionGrid(currentDisableLockJammingIdx, ["Locks will never jam", "Locks may jam"], 1, controlWidth);
         _settings.DisableLockJamming = disableLockJammingIdx == 0;
+    }
+
+    public static void OnGUI_MainCharacterHasAdvantageOnRolls(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
+        Label("Main Character Advantage on Rolls", labelWidth);
+        int currentMainCharacterHasAdvantageOnRollsIdx = _settings.MainCharacterHasAdvantageOnRolls ? 0 : 1;
+        int mainCharacterHasAdvantageOnRollsIdx = SelectionGrid(currentMainCharacterHasAdvantageOnRollsIdx, ["PC has advantage", "PC does not have advantage"], 1, controlWidth);
+        _settings.MainCharacterHasAdvantageOnRolls = mainCharacterHasAdvantageOnRollsIdx == 0;
+    }
+
+    public static void OnGUI_AvoidAmbushFromRandomEncounters(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
+        Label("Avoid Ambush from Random Encounters", labelWidth);
+        int currentAvoidAmbushFromRandomEncountersIdx = _settings.AvoidAmbushFromRandomEncounters ? 0 : 1;
+        int avoidAmbushFromRandomEncountersIdx = SelectionGrid(currentAvoidAmbushFromRandomEncountersIdx, ["Ambushes are avoided", "Ambushes are not avoided"], 1, controlWidth);
+        _settings.AvoidAmbushFromRandomEncounters = avoidAmbushFromRandomEncountersIdx == 0;
     }
 
     private static void OnSaveGUI(UnityModManager.ModEntry modEntry) {

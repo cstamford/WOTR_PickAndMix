@@ -6,6 +6,12 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine.Assertions;
+using Kingmaker.RuleSystem.Rules;
+using Kingmaker.Assets.Controllers.GlobalMap;
+using Kingmaker.RandomEncounters;
+using System.Linq;
+using Kingmaker.UnitLogic;
+using Kingmaker.Blueprints.Classes;
 
 [HarmonyPatch(typeof(OwlcatRenderPipeline), nameof(OwlcatRenderPipeline.InitializeShadowData), [typeof(ShadowingData)], [ArgumentType.Out])]
 public static class FixShadowResolution {
@@ -33,4 +39,20 @@ public static class DisableLockJamming {
     }
 
     public static bool IsJammed(bool jammed) => !Main.DisableLockJamming && jammed;
+}
+
+[HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
+public static class MainCharacterHasAdvantageOnRolls {
+    public static void Prefix(RuleRollDice __instance) {
+        if (Main.MainCharacterHasAdvantageOnRolls && __instance.Initiator.IsMainCharacter) {
+            __instance.AddReroll(1, true, __instance.Initiator.Facts.GetAll<Feature>().First(i => i.Blueprint.HasGroup(FeatureGroup.Deities)));
+        }
+    }
+}
+
+[HarmonyPatch(typeof(RandomEncountersController), nameof(RandomEncountersController.GetAvoidanceCheckResult))]
+public static class AvoidAmbushFromRandomEncounters {
+    public static void Postfix(ref RandomEncounterAvoidanceCheckResult __result) {
+        __result = Main.AvoidAmbushFromRandomEncounters ? RandomEncounterAvoidanceCheckResult.Success : __result;
+    }
 }
