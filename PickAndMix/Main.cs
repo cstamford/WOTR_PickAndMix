@@ -44,7 +44,6 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
     // Shadow settings
     [Range(1024f, 16384f)] public int AtlasSize;
     [Range(128f, 4096f)] public int DirectionalLightCascadeResolution;
-    [Range(1, 4)] public int DirectionalLightCascadeCount;
     [Range(128f, 2048f)] public int PointLightResolution;
     [Range(128f, 2048f)] public int SpotLightResolution;
 
@@ -63,7 +62,6 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
     public void ApplyWOTRDefaults() {
         AtlasSize = 4096;
         DirectionalLightCascadeResolution = 1024;
-        DirectionalLightCascadeCount = 1;
         PointLightResolution = 512;
         SpotLightResolution = 512;
         DisableLockJamming = false;
@@ -76,11 +74,10 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
     public void ApplyOptimizedDefaults() {
         AtlasSize = 16384;
         DirectionalLightCascadeResolution = 4096;
-        DirectionalLightCascadeCount = 1;
         PointLightResolution = 2048;
         SpotLightResolution = 2048;
         DisableLockJamming = true;
-        MainCharacterHasAdvantageOnRollsFlags = 
+        MainCharacterHasAdvantageOnRollsFlags =
             PickAndMixDiceTypeFlags.D4 |
             PickAndMixDiceTypeFlags.D6 |
             PickAndMixDiceTypeFlags.D8 |
@@ -93,8 +90,13 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
 }
 
 public static class ErrorText {
-    public static string HideFamiliarsDisabledDueToError =
-        $"Exception when trying to apply HideFamiliars. The hidden familiar functionality will not work. " +
+    public const string HideFamiliarsDisabledDueToError =
+        $"Exception when trying to apply HideFamiliars. The hidden familiar functionality will not work. {GenericOldHarmonyError}";
+
+    public const string MainCharacterHasAdvantageDisabledDueToError =
+        $"Exception when trying to apply MainCharacterHasAdvantageOnRolls. This will not work on most roll types. {GenericOldHarmonyError}";
+
+    public const string GenericOldHarmonyError = 
         $"This was likely caused by an old version of Harmony. Make sure your version of Wrath_Data/Managed/0Harmony.dll is 2.3.1.1 or later. " +
         $"If your version of Harmony is old, you may be able to fix it by replacing it with the one from Wrath_Data/Managed/UnityModManager/0Harmony.dll";
 }
@@ -104,7 +106,6 @@ public static class ErrorText {
 #endif
 public static class Main {
     public static int AtlasSize => _settings.AtlasSize;
-    public static int DirectionalLightCascadeCount => _settings.DirectionalLightCascadeCount;
     public static int DirectionalLightCascadeResolution => _settings.DirectionalLightCascadeResolution;
     public static int PointLightResolution => _settings.PointLightResolution;
     public static int SpotLightResolution => _settings.SpotLightResolution;
@@ -112,6 +113,8 @@ public static class Main {
     public static PickAndMixDiceTypeFlags MainCharacterHasAdvantageOnRollsFlags => _settings.MainCharacterHasAdvantageOnRollsFlags;
     public static bool AvoidAmbushFromRandomEncounters => _settings.AvoidAmbushFromRandomEncounters;
     public static bool HideFamiliars => _settings.HideFamiliars;
+
+    public static Exception MainCharacterHasAdvantageOnRollsFlagsException { get; set; } = null;
     public static Exception HideFamiliarsException { get; set; } = null;
 
     public static Harmony HarmonyInstance;
@@ -135,7 +138,6 @@ public static class Main {
     }
 
     private static readonly List<int> _AtlasSizes = [1024, 2048, 4096, 8192, 16384];
-    private static readonly List<int> _DirectionalLightCascadeCount = [1, 2, 3, 4];
     private static readonly List<int> _DirectionalLightCascadeResolutions = [256, 512, 1024, 2048, 4096];
     private static readonly List<int> _PointLightResolutions = [128, 256, 512, 1024, 2048];
     private static readonly List<int> _SpotLightResolutions = [128, 256, 512, 1024, 2048];
@@ -209,14 +211,6 @@ public static class Main {
         int upscalerIdx = SelectionGrid(currentUpscalerIdx, [.. _AtlasSizes.Select(x => x.ToString())], 1, controlWidth);
         _settings.AtlasSize = _AtlasSizes[upscalerIdx];
     }
-
-    public static void OnGUI_DirectionalLightCascadeCount(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
-        Label("Directional Light Cascade Count", labelWidth);
-        int currentDirectionalLightCascadeCountIdx = _DirectionalLightCascadeCount.IndexOf(_settings.DirectionalLightCascadeCount);
-        int directionalLightCascadeCountIdx = SelectionGrid(currentDirectionalLightCascadeCountIdx, [.. _DirectionalLightCascadeCount.Select(x => x.ToString())], 1, controlWidth);
-        _settings.DirectionalLightCascadeCount = _DirectionalLightCascadeCount[directionalLightCascadeCountIdx];
-    }
-
     public static void OnGUI_DirectionalLightCascadeResolution(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
         Label("Directional Light Cascade Resolution", labelWidth);
         int currentDirectionalLightCascadeResolutionIdx = _DirectionalLightCascadeResolutions.IndexOf(_settings.DirectionalLightCascadeResolution);
@@ -246,23 +240,32 @@ public static class Main {
     }
 
     public static void OnGUI_MainCharacterHasAdvantageOnRollsFlags(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
+        GUI.enabled = MainCharacterHasAdvantageOnRollsFlagsException == null;
+
         Label("Main Character Has Advantage on Rolls", labelWidth);
 
-        using VerticalScope _ = new();
+        using (VerticalScope _ = new()) {
 
-        foreach (string flag in _DiceFlagOptions) {
-            PickAndMixDiceTypeFlags flagValue = (PickAndMixDiceTypeFlags)Enum.Parse(typeof(PickAndMixDiceTypeFlags), flag);
-            bool flagEnabled = _settings.MainCharacterHasAdvantageOnRollsFlags.HasFlag(flagValue);
-            bool newFlagEnabled = Toggle(flagEnabled, flag);
+            foreach (string flag in _DiceFlagOptions) {
+                PickAndMixDiceTypeFlags flagValue = (PickAndMixDiceTypeFlags)Enum.Parse(typeof(PickAndMixDiceTypeFlags), flag);
+                bool flagEnabled = _settings.MainCharacterHasAdvantageOnRollsFlags.HasFlag(flagValue);
+                bool newFlagEnabled = Toggle(flagEnabled, flag);
 
-            if (newFlagEnabled != flagEnabled) {
-                if (newFlagEnabled) {
-                    _settings.MainCharacterHasAdvantageOnRollsFlags |= flagValue;
-                } else {
-                    _settings.MainCharacterHasAdvantageOnRollsFlags &= ~flagValue;
+                if (newFlagEnabled != flagEnabled) {
+                    if (newFlagEnabled) {
+                        _settings.MainCharacterHasAdvantageOnRollsFlags |= flagValue;
+                    } else {
+                        _settings.MainCharacterHasAdvantageOnRollsFlags &= ~flagValue;
+                    }
                 }
             }
         }
+
+        if (MainCharacterHasAdvantageOnRollsFlagsException != null) {
+            Label($"{ErrorText.MainCharacterHasAdvantageDisabledDueToError}\n{MainCharacterHasAdvantageOnRollsFlagsException}");
+        }
+
+        GUI.enabled = true;
     }
 
     public static void OnGUI_AvoidAmbushFromRandomEncounters(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {

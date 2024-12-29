@@ -16,19 +16,22 @@ using Kingmaker;
 using Kingmaker.GameModes;
 using Kingmaker.Visual.Critters;
 using System;
+using Kingmaker.RuleSystem;
+using static Kingmaker.Dungeon.Utils.PersistentRandom;
 
 [HarmonyPatch(typeof(OwlcatRenderPipeline), nameof(OwlcatRenderPipeline.InitializeShadowData), [typeof(ShadowingData)], [ArgumentType.Out])]
 public static class FixShadowResolution {
     public static void Postfix(ref ShadowingData shadowData) {
-        if (Game.Instance.CurrentMode == GameModeType.GlobalMap ||
-            Game.Instance.CurrentMode == GameModeType.Kingdom)
+        if (Game.Instance.CurrentMode == GameModeType.CutsceneGlobalMap ||
+            Game.Instance.CurrentMode == GameModeType.GlobalMap ||
+            Game.Instance.CurrentMode == GameModeType.Kingdom || 
+            Game.Instance.CurrentMode == GameModeType.Rest)
         {
             // Don't apply shadow tweaks unless we're in regular play.  Point light resolution causes visual aliasing (shadow bias seems off).
             return;
         }
 
         shadowData.AtlasSize = Main.AtlasSize;
-        shadowData.DirectionalLightCascades.Count = Main.DirectionalLightCascadeCount;
         shadowData.DirectionalLightCascadeResolution = Main.DirectionalLightCascadeResolution;
         shadowData.PointLightResolution = Main.PointLightResolution;
         shadowData.SpotLightResolution = Main.SpotLightResolution;
@@ -52,10 +55,31 @@ public static class DisableLockJamming {
     public static bool IsJammed(bool jammed) => !Main.DisableLockJamming && jammed;
 }
 
-[HarmonyPatch]
-public static class MainCharacterHasAdvantageOnRolls {
-    [HarmonyPrefix, HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
-    public static void RuleRollDice_Roll(RuleRollDice __instance) {
+[HarmonyPatch(typeof(RulebookEvent.Dice), nameof(RulebookEvent.Dice.D), [typeof(DiceFormula)])]
+public static class MainCharacterRollsWithAdvantage {
+    [HarmonyReversePatch]
+    public static int Original(DiceFormula formula) => throw new("Stub");
+
+    public static void Postfix(DiceFormula formula, ref int __result) {
+        int originalResult = __result;
+        int advantageResult = 0;
+
+        if (Main.MainCharacterHasAdvantageOnRollsFlags.Matches(formula.Dice) &&
+            (Game.Instance.Rulebook.Context.CurrentEvent?.Initiator.IsMainCharacter ?? false)
+        ) {
+            advantageResult = Original(formula);
+            __result = Math.Max(originalResult, advantageResult);
+        }
+
+#if DEBUG
+        Main.ModEntry.Logger.Log($"{formula} -> original: {originalResult}, advantage: {advantageResult}, final: {__result}");
+#endif
+    }
+}
+
+[HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
+public static class MainCharacterRollsWithAdvantage_D20 {
+    public static void Postfix(RuleRollDice __instance) {
 #if DEBUG
         Main.ModEntry.Logger.Log($"{__instance.DiceFormula.Dice} {__instance.Initiator}");
 #endif
@@ -65,33 +89,24 @@ public static class MainCharacterHasAdvantageOnRolls {
         }
     }
 
-#if TODO
-    [HarmonyPatch(typeof(TacticalCombatHelper), nameof(TacticalCombatHelper.GetDiceResult))]
-    public static class TacticalCombatHelper_GetDiceResult {
-        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) => new CodeMatcher(instructions)
-            .MatchEndForward(CodeMatch.WithOpcodes([OpCodes.Ret]))
-            .Repeat(cm => cm.InsertAndAdvance(
-                new CodeInstruction(OpCodes.Ldarg_0),
-                new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(TacticalCombatHelper_GetDiceResult), nameof(CalculateRoll))
-            )))
-            .Instructions();
-
-        private static int CalculateRoll(int originalRoll, DiceFormula dice) {
-#if DEBUG
-            Main.ModEntry.Logger.Log($"{dice} -> original: {originalRoll}");
-#endif
-
-            if (Main.MainCharacterHasAdvantageOnRollsFlags.Matches(dice.Dice) && false) { // TODO: No context on the roller, so we can't check if it's the main character
-                return Math.Max(originalRoll, GetDiceResult_Original(dice));
-            }
-
-            return originalRoll;
+    public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) {
+        try {
+            return TranspilerImpl(instructions);
+        } catch (TypeLoadException e) {
+            Main.MainCharacterHasAdvantageOnRollsFlagsException = e;
+            Main.ModEntry.Logger.Error($"{ErrorText.MainCharacterHasAdvantageDisabledDueToError}");
+            Main.ModEntry.Logger.LogException(e);
+            return instructions;
         }
-
-        [HarmonyReversePatch]
-        private static int GetDiceResult_Original(DiceFormula dice) => throw new("Stub");
     }
-#endif
+
+    public static IEnumerable<CodeInstruction> TranspilerImpl(IEnumerable<CodeInstruction> instructions) => new CodeMatcher(instructions)
+        .MatchStartForward(CodeMatch.Calls(AccessTools.Method(typeof(RulebookEvent.Dice), nameof(RulebookEvent.Dice.D), [typeof(DiceFormula)])))
+        .ThrowIfInvalid("MainCharacterRollsWithAdvantage_D20 - find call to RulebookEvent.Dice.D")
+        .RemoveInstruction()
+        .InsertAndAdvance(new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(MainCharacterRollsWithAdvantage), nameof(MainCharacterRollsWithAdvantage.Original))))
+        .Instructions();
+
 }
 
 [HarmonyPatch(typeof(RandomEncountersController), nameof(RandomEncountersController.GetAvoidanceCheckResult))]
