@@ -8,8 +8,37 @@ using UniRx;
 using static UnityEngine.GUILayout;
 using static PickAndMix.GUILayoutExtensions;
 using System;
+using Kingmaker.RuleSystem;
 
 namespace PickAndMix;
+
+[Flags]
+public enum PickAndMixDiceTypeFlags {
+    D2 = 1 << 0,
+    D3 = 1 << 1,
+    D4 = 1 << 2,
+    D6 = 1 << 3,
+    D8 = 1 << 4,
+    D10 = 1 << 5,
+    D12 = 1 << 6,
+    D20 = 1 << 7,
+    D100 = 1 << 8,
+}
+
+public static class PickAndMixDiceTypeFlagsExtensions {
+    public static bool Matches(this PickAndMixDiceTypeFlags flags, DiceType diceType) => diceType switch {
+        DiceType.D2 => flags.HasFlag(PickAndMixDiceTypeFlags.D2),
+        DiceType.D3 => flags.HasFlag(PickAndMixDiceTypeFlags.D3),
+        DiceType.D4 => flags.HasFlag(PickAndMixDiceTypeFlags.D4),
+        DiceType.D6 => flags.HasFlag(PickAndMixDiceTypeFlags.D6),
+        DiceType.D8 => flags.HasFlag(PickAndMixDiceTypeFlags.D8),
+        DiceType.D10 => flags.HasFlag(PickAndMixDiceTypeFlags.D10),
+        DiceType.D12 => flags.HasFlag(PickAndMixDiceTypeFlags.D12),
+        DiceType.D20 => flags.HasFlag(PickAndMixDiceTypeFlags.D20),
+        DiceType.D100 => flags.HasFlag(PickAndMixDiceTypeFlags.D100),
+        _ => false,
+    };
+}
 
 public class PickAndMixSettings : UnityModManager.ModSettings {
     // Shadow settings
@@ -21,7 +50,7 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
 
     // Tweaks
     public bool DisableLockJamming;
-    public bool MainCharacterHasAdvantageOnRolls;
+    public PickAndMixDiceTypeFlags MainCharacterHasAdvantageOnRollsFlags;
     public bool AvoidAmbushFromRandomEncounters;
     public bool HideFamiliars;
 
@@ -38,7 +67,8 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         PointLightResolution = 512;
         SpotLightResolution = 512;
         DisableLockJamming = false;
-        MainCharacterHasAdvantageOnRolls = false;
+        MainCharacterHasAdvantageOnRollsFlags =
+            default;
         AvoidAmbushFromRandomEncounters = false;
         HideFamiliars = false;
     }
@@ -50,7 +80,13 @@ public class PickAndMixSettings : UnityModManager.ModSettings {
         PointLightResolution = 2048;
         SpotLightResolution = 2048;
         DisableLockJamming = true;
-        MainCharacterHasAdvantageOnRolls = true;
+        MainCharacterHasAdvantageOnRollsFlags = 
+            PickAndMixDiceTypeFlags.D4 |
+            PickAndMixDiceTypeFlags.D6 |
+            PickAndMixDiceTypeFlags.D8 |
+            PickAndMixDiceTypeFlags.D10 |
+            PickAndMixDiceTypeFlags.D12 |
+            PickAndMixDiceTypeFlags.D20;
         AvoidAmbushFromRandomEncounters = true;
         HideFamiliars = true;
     }
@@ -73,7 +109,7 @@ public static class Main {
     public static int PointLightResolution => _settings.PointLightResolution;
     public static int SpotLightResolution => _settings.SpotLightResolution;
     public static bool DisableLockJamming => _settings.DisableLockJamming;
-    public static bool MainCharacterHasAdvantageOnRolls => _settings.MainCharacterHasAdvantageOnRolls;
+    public static PickAndMixDiceTypeFlags MainCharacterHasAdvantageOnRollsFlags => _settings.MainCharacterHasAdvantageOnRollsFlags;
     public static bool AvoidAmbushFromRandomEncounters => _settings.AvoidAmbushFromRandomEncounters;
     public static bool HideFamiliars => _settings.HideFamiliars;
     public static Exception HideFamiliarsException { get; set; } = null;
@@ -103,6 +139,7 @@ public static class Main {
     private static readonly List<int> _DirectionalLightCascadeResolutions = [256, 512, 1024, 2048, 4096];
     private static readonly List<int> _PointLightResolutions = [128, 256, 512, 1024, 2048];
     private static readonly List<int> _SpotLightResolutions = [128, 256, 512, 1024, 2048];
+    private static readonly List<string> _DiceFlagOptions = [..Enum.GetValues(typeof(PickAndMixDiceTypeFlags)).Cast<PickAndMixDiceTypeFlags>().Select(x => x.ToString())];
 
     public static void OnGUI(UnityModManager.ModEntry modEntry) {
         GUILayoutOption labelWidth = Width(128);
@@ -148,7 +185,7 @@ public static class Main {
         Space(spacing);
 
         using (HorizontalScope _ = new()) {
-            OnGUI_MainCharacterHasAdvantageOnRolls(labelWidth, tweaksControlWidth);
+            OnGUI_MainCharacterHasAdvantageOnRollsFlags(labelWidth, tweaksControlWidth);
         }
 
         Space(spacing);
@@ -208,11 +245,24 @@ public static class Main {
         _settings.DisableLockJamming = disableLockJammingIdx == 0;
     }
 
-    public static void OnGUI_MainCharacterHasAdvantageOnRolls(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
-        Label("Main Character Advantage on Rolls", labelWidth);
-        int currentMainCharacterHasAdvantageOnRollsIdx = _settings.MainCharacterHasAdvantageOnRolls ? 0 : 1;
-        int mainCharacterHasAdvantageOnRollsIdx = SelectionGrid(currentMainCharacterHasAdvantageOnRollsIdx, ["PC has advantage", "PC does not have advantage"], 1, controlWidth);
-        _settings.MainCharacterHasAdvantageOnRolls = mainCharacterHasAdvantageOnRollsIdx == 0;
+    public static void OnGUI_MainCharacterHasAdvantageOnRollsFlags(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {
+        Label("Main Character Has Advantage on Rolls", labelWidth);
+
+        using VerticalScope _ = new();
+
+        foreach (string flag in _DiceFlagOptions) {
+            PickAndMixDiceTypeFlags flagValue = (PickAndMixDiceTypeFlags)Enum.Parse(typeof(PickAndMixDiceTypeFlags), flag);
+            bool flagEnabled = _settings.MainCharacterHasAdvantageOnRollsFlags.HasFlag(flagValue);
+            bool newFlagEnabled = Toggle(flagEnabled, flag);
+
+            if (newFlagEnabled != flagEnabled) {
+                if (newFlagEnabled) {
+                    _settings.MainCharacterHasAdvantageOnRollsFlags |= flagValue;
+                } else {
+                    _settings.MainCharacterHasAdvantageOnRollsFlags &= ~flagValue;
+                }
+            }
+        }
     }
 
     public static void OnGUI_AvoidAmbushFromRandomEncounters(GUILayoutOption labelWidth, GUILayoutOption controlWidth) {

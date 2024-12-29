@@ -52,13 +52,46 @@ public static class DisableLockJamming {
     public static bool IsJammed(bool jammed) => !Main.DisableLockJamming && jammed;
 }
 
-[HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
+[HarmonyPatch]
 public static class MainCharacterHasAdvantageOnRolls {
-    public static void Prefix(RuleRollDice __instance) {
-        if (Main.MainCharacterHasAdvantageOnRolls && __instance.Initiator.IsMainCharacter) {
+    [HarmonyPrefix, HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
+    public static void RuleRollDice_Roll(RuleRollDice __instance) {
+#if DEBUG
+        Main.ModEntry.Logger.Log($"{__instance.DiceFormula.Dice} {__instance.Initiator}");
+#endif
+
+        if (__instance.Initiator.IsMainCharacter && Main.MainCharacterHasAdvantageOnRollsFlags.Matches(__instance.DiceFormula.Dice)) {
             __instance.AddReroll(1, true, __instance.Initiator.Facts.GetAll<Feature>().First(i => i.Blueprint.HasGroup(FeatureGroup.Deities)));
         }
     }
+
+#if TODO
+    [HarmonyPatch(typeof(TacticalCombatHelper), nameof(TacticalCombatHelper.GetDiceResult))]
+    public static class TacticalCombatHelper_GetDiceResult {
+        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) => new CodeMatcher(instructions)
+            .MatchEndForward(CodeMatch.WithOpcodes([OpCodes.Ret]))
+            .Repeat(cm => cm.InsertAndAdvance(
+                new CodeInstruction(OpCodes.Ldarg_0),
+                new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(TacticalCombatHelper_GetDiceResult), nameof(CalculateRoll))
+            )))
+            .Instructions();
+
+        private static int CalculateRoll(int originalRoll, DiceFormula dice) {
+#if DEBUG
+            Main.ModEntry.Logger.Log($"{dice} -> original: {originalRoll}");
+#endif
+
+            if (Main.MainCharacterHasAdvantageOnRollsFlags.Matches(dice.Dice) && false) { // TODO: No context on the roller, so we can't check if it's the main character
+                return Math.Max(originalRoll, GetDiceResult_Original(dice));
+            }
+
+            return originalRoll;
+        }
+
+        [HarmonyReversePatch]
+        private static int GetDiceResult_Original(DiceFormula dice) => throw new("Stub");
+    }
+#endif
 }
 
 [HarmonyPatch(typeof(RandomEncountersController), nameof(RandomEncountersController.GetAvoidanceCheckResult))]
