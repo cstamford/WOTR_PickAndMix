@@ -17,7 +17,6 @@ using Kingmaker.GameModes;
 using Kingmaker.Visual.Critters;
 using System;
 using Kingmaker.RuleSystem;
-using static Kingmaker.Dungeon.Utils.PersistentRandom;
 
 [HarmonyPatch(typeof(OwlcatRenderPipeline), nameof(OwlcatRenderPipeline.InitializeShadowData), [typeof(ShadowingData)], [ArgumentType.Out])]
 public static class FixShadowResolution {
@@ -80,13 +79,17 @@ public static class MainCharacterRollsWithAdvantage {
 [HarmonyPatch(typeof(RuleRollDice), nameof(RuleRollDice.Roll))]
 public static class MainCharacterRollsWithAdvantage_D20 {
     public static void Postfix(RuleRollDice __instance) {
-#if DEBUG
-        Main.ModEntry.Logger.Log($"{__instance.DiceFormula.Dice} {__instance.Initiator}");
-#endif
+        int originalResult = __instance.RollHistory.Max();
+        int advantageResult = 0;
 
         if (__instance.Initiator.IsMainCharacter && Main.MainCharacterHasAdvantageOnRollsFlags.Matches(__instance.DiceFormula.Dice)) {
-            __instance.AddReroll(1, true, __instance.Initiator.Facts.GetAll<Feature>().First(i => i.Blueprint.HasGroup(FeatureGroup.Deities)));
+            __instance.Reroll(__instance.Initiator.Facts.GetAll<Feature>().First(i => i.Blueprint.HasGroup(FeatureGroup.Deities)), takeBest: true);
+            advantageResult = __instance.RollHistory.Last();
         }
+
+#if DEBUG
+        Main.ModEntry.Logger.Log($"{__instance.DiceFormula} -> original: {originalResult}, advantage: {advantageResult}, final: {__instance.Result}");
+#endif
     }
 
     public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) {
